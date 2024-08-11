@@ -9,34 +9,33 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class LeafService {
 
     LeafAllocMapper leafAllocMapper;
-
-    HashMap<String, Segment> cache = new HashMap();
+    ConcurrentHashMap<String, Segment> cache = new ConcurrentHashMap<>();
     AtomicBoolean isFirstLoad = new AtomicBoolean(true);
 
     public LeafService(LeafAllocMapper leafAllocMapper) {
         this.leafAllocMapper = leafAllocMapper;
     }
 
-    public long generateId(@NonNull String bizTag) {
-        Segment segment = cache.get(bizTag) == null ? reload(bizTag) : cache.get(bizTag);
-        if (segment == null) {
+    public Long generateId(@NonNull String bizTag) {
+        Segment segment = cache.get(bizTag);
+        if (segment == null && (segment = reload(bizTag)) == null) {
             throw new GenericException(HttpStatus.BAD_REQUEST, String.format("bizTag: %s not exist", bizTag));
         }
 
-        long id = segment.cursor.incrementAndGet();
+        Long id = segment.cursor.incrementAndGet();
         //阀值
         if (id < segment.threshold) {
             return id;
         } else {
-            synchronized (segment) {
+            synchronized (LeafService.class) {
                 if (id < cache.get(bizTag).threshold) {
                     return id;
                 }
@@ -52,29 +51,28 @@ public class LeafService {
         if (cache.get(bizTag) == null) {
             LeafAlloc leafAlloc = getLeafAllocByTag(bizTag);
             if (leafAlloc != null) {
-                //每次初始化自动扩容一次，防止上一个号段未使用完毕而程序挂了。可能导致id 重复
                 if (isFirstLoad.get()) {
+                    //每次初始化自动扩容一次，防止上一个号段未使用完毕而程序挂了。可能导致id 重复
                     leafAlloc = updateAndGet(bizTag);
                     isFirstLoad.set(false);
                 }
-                return cache.putIfAbsent(bizTag, new Segment(leafAlloc));
+                cache.putIfAbsent(bizTag, new Segment(leafAlloc));
             }
         }
-        // 不能直接返回null
-        // 多线程环境下可能多个线程同时进入reload() -> cache.get(bizTag) == null
-        // 1.T1更新缓存成功,返回segment
-        // 2.T2 if(cache.get(bizTag) == null) 此时=false,直接执行return
         return cache.get(bizTag);
     }
 
-    public void resize(Long id, String bizTag) {
-        if (id < cache.get(bizTag).threshold) {
+    public void resize(Long cursor, String bizTag) {
+        if (cursor < cache.get(bizTag).threshold) {
             return;
         }
-        LeafAlloc leafAlloc = updateAndGet(bizTag);
-        if (leafAlloc != null) {
-            cache.put(bizTag, new Segment(leafAlloc));
-        }
+        do {
+            LeafAlloc leafAlloc = updateAndGet(bizTag);
+            if (leafAlloc != null) {
+                long current = cache.get(bizTag).cursor.get();
+                cache.put(bizTag, new Segment(current, leafAlloc));
+            }
+        } while (cursor >= cache.get(bizTag).threshold);
     }
 
     @Transactional(rollbackFor = Exception.class)
