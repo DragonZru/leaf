@@ -56,3 +56,15 @@ dependencies {
     // https://mvnrepository.com/artifact/com.alibaba.cloud/spring-cloud-starter-alibaba-nacos-discovery
     implementation 'com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery:2023.0.1.2'
 }
+
+jar {
+    manifest {
+        attributes(
+//                'Implementation-Title': 'mybatis-spring-boot-starter',
+//                'Implementation-Version': '1.0.0',
+//                'Implementation-Vendor': 'ylli',
+//                'Implementation-Vendor-Id': 'com.ylli',
+                'Main-Class': 'com.ylli.api.LeafApplication'
+        )
+    }
+}
