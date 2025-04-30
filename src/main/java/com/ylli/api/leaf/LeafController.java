@@ -6,8 +6,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * @author ylli
+ */
 @RestController
-@RequestMapping("/leaf")
+@RequestMapping("/uid")
 public class LeafController {
 
     LeafService leafService;
@@ -17,7 +20,7 @@ public class LeafController {
     }
 
     @GetMapping
-    public Object getId(@RequestParam(required = false, defaultValue = "default") String bizTag) {
+    public Object generateId(@RequestParam(required = false, defaultValue = "default") String bizTag) {
         return leafService.generateId(bizTag);
     }
 }
